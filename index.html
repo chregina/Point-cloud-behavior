@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>אינפוגרפיקה: ענן נקודות סטטיסטי</title>
+    <style>
+        :root {
+            --primary-bg: #eef2f5;
+            --card-bg: #ffffff;
+            --text-main: #2c3e50;
+            --text-light: #7f8c8d;
+            
+            /* מצבים */
+            --color-positive: #27ae60;
+            --color-negative: #e74c3c;
+            --color-zero: #95a5a6;
+            --color-nonlinear: #8e44ad;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--primary-bg);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 900px;
+            padding: 40px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        .header {
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 3.2rem;
+            color: var(--text-main);
+        }
+
+        .header p {
+            margin: 0;
+            color: var(--text-light);
+            font-size: 1.1rem;
+        }
+
+        .footer {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--text-main);
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 40px;
+            align-items: start;
+        }
+
+        @media (max-width: 768px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* מגרש הגרף (SVG) */
+        .plot-container {
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px;
+            position: relative;
+        }
+
+        svg {
+            width: 100%;
+            height: auto;
+            display: block;
+            overflow: visible;
+        }
+
+        .axis {
+            stroke: #cbd5e1;
+            stroke-width: 1.5;
+            stroke-linecap: round;
+        }
+
+        .axis-label {
+            font-size: 4px;
+            fill: #64748b;
+            font-weight: bold;
+        }
+
+        .point {
+            fill: var(--color-zero);
+            opacity: 0.7;
+            /* מעבר חלק במיקום הנקודות ליצירת אנימציה */
+            transition: cx 1.2s cubic-bezier(0.4, 0, 0.2, 1), 
+                        cy 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+                        fill 0.5s ease;
+        }
+
+        .trendline {
+            fill: none;
+            stroke: var(--color-zero);
+            stroke-width: 2.5;
+            stroke-linecap: round;
+            stroke-dasharray: 4;
+            transition: stroke 0.5s ease, opacity 0.5s ease;
+        }
+
+        /* פאנל שליטה והסברים */
+        .info-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .buttons-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        button {
+            padding: 15px 10px;
+            border: 2px solid transparent;
+            border-radius: 10px;
+            background: #f1f5f9;
+            color: var(--text-main);
+            font-size: 1.15rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        button:hover {
+            background: #e2e8f0;
+            transform: translateY(-2px);
+        }
+
+        button.active {
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        button[data-type="positive"].active { background: #e6f6ec; border-color: var(--color-positive); color: var(--color-positive); }
+        button[data-type="negative"].active { background: #fdedec; border-color: var(--color-negative); color: var(--color-negative); }
+        button[data-type="zero"].active { background: #f0f3f4; border-color: var(--color-zero); color: #34495e; }
+        button[data-type="nonlinear"].active { background: #f5eef8; border-color: var(--color-nonlinear); color: var(--color-nonlinear); }
+
+        .explanation-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px;
+            min-height: 150px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            transition: border-color 0.3s ease;
+        }
+
+        .explanation-card h3 {
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1.6rem;
+            transition: color 0.3s ease;
+        }
+
+        .explanation-card p {
+            line-height: 1.6;
+            margin-bottom: 0;
+            color: #475569;
+            font-size: 1.25rem;
+        }
+
+        .example-tag {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 8px 12px;
+            background: #f8fafc;
+            border-radius: 6px;
+            font-size: 1.15rem;
+            font-weight: bold;
+            color: #334155;
+            border-right: 4px solid var(--text-light);
+            transition: border-color 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1>התנהגות ענן נקודות</h1>
+            <p>לחץ על סוגי הקשר כדי לראות כיצד ענן הנקודות מסתדר במרחב באופן אינטראקטיבי</p>
+        </div>
+
+        <div class="layout">
+            <!-- אזור הגרף -->
+            <div class="plot-container">
+                <svg viewBox="0 0 100 100" id="scatter-svg">
+                    <!-- צירים -->
+                    <line x1="5" y1="95" x2="95" y2="95" class="axis" />
+                    <line x1="5" y1="95" x2="5" y2="5" class="axis" />
+                    
+                    <!-- תוויות צירים -->
+                    <text x="50" y="99" class="axis-label" text-anchor="middle">משתנה X</text>
+                    <text x="2" y="50" class="axis-label" text-anchor="middle" transform="rotate(-90 2 50)">משתנה Y</text>
+
+                    <!-- קו מגמה -->
+                    <path id="trendline" class="trendline" d="M 10 50 L 90 50" opacity="0"/>
+
+                    <!-- הנקודות ייווצרו כאן באמצעות JS -->
+                    <g id="points-group"></g>
+                </svg>
+            </div>
+
+            <!-- אזור שליטה והסברים -->
+            <div class="info-panel">
+                <div class="buttons-grid">
+                    <button data-type="positive" onclick="updatePlot('positive')">📈 קשר חיובי</button>
+                    <button data-type="negative" onclick="updatePlot('negative')">📉 קשר שלילי</button>
+                    <button data-type="nonlinear" onclick="updatePlot('nonlinear')">〰️ לא ליניארי</button>
+                    <button data-type="zero" class="active" onclick="updatePlot('zero')">🔀 היעדר קשר</button>
+                </div>
+
+                <div class="explanation-card" id="exp-card">
+                    <h3 id="exp-title">🔀 היעדר קשר (אפס מתאם)</h3>
+                    <p id="exp-text">בענן נקודות של היעדר קשר, הנקודות מפוזרות באקראי על פני כל השטח ללא שום תבנית ברורה. אין קו מגמה שניתן למתוח.</p>
+                    <div class="example-tag" id="exp-example">דוגמה: מידת נעליים מול ציון במבחן.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            הוכן על ידי רגינה צ'ולסקי
+        </div>
+    </div>
+
+    <script>
+        const numPoints = 65;
+        const pointsGroup = document.getElementById('points-group');
+        const trendline = document.getElementById('trendline');
+        
+        // יצירת נקודות התחלתיות
+        const points = [];
+        for (let i = 0; i < numPoints; i++) {
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('r', '1.5');
+            circle.setAttribute('class', 'point');
+            
+            // מיקום התחלתי אקראי (היעדר קשר)
+            const cx = 10 + Math.random() * 80;
+            const cy = 10 + Math.random() * 80;
+            circle.setAttribute('cx', cx);
+            circle.setAttribute('cy', cy);
+            
+            pointsGroup.appendChild(circle);
+            points.push(circle);
+        }
+
+        // הגדרות המצבים השונים
+        const states = {
+            positive: {
+                title: '📈 קשר חיובי (ישר)',
+                text: 'הנקודות מסודרות במגמת עלייה משמאל לימין (צפיפות סביב קו אלכסוני עולה). כאשר משתנה X עולה, גם משתנה Y נוטה לעלות.',
+                example: 'דוגמה: שעות לימוד למבחן ⬅️ הציון.',
+                color: 'var(--color-positive)',
+                trendPath: 'M 10 90 L 90 10',
+                showTrend: true,
+                getCoords: (x) => {
+                    // Y יורד ככל ש-X עולה (ב-SVG, Y=0 זה למעלה)
+                    let base_y = 100 - x; 
+                    return base_y + (Math.random() * 24 - 12); 
+                }
+            },
+            negative: {
+                title: '📉 קשר שלילי (הפוך)',
+                text: 'הנקודות מסודרות במגמת ירידה משמאל לימין (צפיפות סביב קו אלכסוני יורד). כאשר משתנה X עולה, משתנה Y נוטה לרדת.',
+                example: 'דוגמה: שעות מסך ⬅️ רמת כושר גופני.',
+                color: 'var(--color-negative)',
+                trendPath: 'M 10 10 L 90 90',
+                showTrend: true,
+                getCoords: (x) => {
+                    // Y עולה ככל ש-X עולה
+                    let base_y = x;
+                    return base_y + (Math.random() * 24 - 12);
+                }
+            },
+            zero: {
+                title: '🔀 היעדר קשר (אפס מתאם)',
+                text: 'ענן הנקודות מפוזר באקראי לחלוטין. לא ניתן למתוח קו מגמה הגיוני, ואי אפשר לחזות את Y על סמך X.',
+                example: 'דוגמה: מידת נעליים ⬅️ ציון בגיאוגרפיה.',
+                color: 'var(--color-zero)',
+                trendPath: 'M 10 50 L 90 50',
+                showTrend: false,
+                getCoords: (x) => {
+                    return 10 + Math.random() * 80;
+                }
+            },
+            nonlinear: {
+                title: '〰️ קשר לא ליניארי (עקום)',
+                text: 'הנקודות יוצרות תבנית ברורה, אך המגמה משנה כיוון (למשל, פרבולה או צורת פעמון). מקדם מתאם קווי רגיל לא יזהה קשר זה.',
+                example: 'דוגמה: רמת לחץ ⬅️ איכות הביצוע (לחץ מתון תורם, לחץ קיצוני פוגע).',
+                color: 'var(--color-nonlinear)',
+                trendPath: 'M 10 80 Q 50 -30 90 80',
+                showTrend: true,
+                getCoords: (x) => {
+                    // צורת פעמון: הפסגה ב-X=50, Y=15
+                    let base_y = 0.045 * Math.pow((x - 50), 2) + 15;
+                    return base_y + (Math.random() * 16 - 8);
+                }
+            }
+        };
+
+        function updatePlot(type) {
+            const state = states[type];
+            
+            // 1. עדכון כפתורים פעילים
+            document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`button[data-type="${type}"]`).classList.add('active');
+
+            // 2. עדכון טקסט וצבעים
+            document.getElementById('exp-title').innerText = state.title;
+            document.getElementById('exp-title').style.color = state.color;
+            document.getElementById('exp-text').innerText = state.text;
+            document.getElementById('exp-example').innerText = state.example;
+            document.getElementById('exp-example').style.borderColor = state.color;
+            document.getElementById('exp-card').style.borderTop = `4px solid ${state.color}`;
+
+            // 3. אנימציית קו מגמה
+            trendline.style.opacity = '0';
+            setTimeout(() => {
+                trendline.setAttribute('d', state.trendPath);
+                trendline.style.stroke = state.color;
+                if (state.showTrend) {
+                    trendline.style.opacity = '0.5';
+                }
+            }, 300);
+
+            // 4. פיזור הנקודות מחדש (אנימציה)
+            points.forEach(point => {
+                let x = 10 + Math.random() * 80;
+                let y = state.getCoords(x);
+                
+                // שמירה על הגבולות
+                if (y < 5) y = 5;
+                if (y > 95) y = 95;
+
+                point.setAttribute('cx', x);
+                point.setAttribute('cy', y);
+                point.style.fill = state.color;
+            });
+        }
+
+        // טעינה ראשונית - הפעלת מצב מעורבב רנדומלית כדי שתהיה אנימציה ראשונה טובה
+        setTimeout(() => {
+            updatePlot('positive');
+        }, 300);
+
+    </script>
+</body>
+</html>
